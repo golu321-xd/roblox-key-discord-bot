@@ -1,46 +1,53 @@
-import discord
-import requests
 import os
+import discord
+from discord.ext import commands
+from flask import Flask
+import requests
 
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")  # Render environment variable
-API = os.getenv("BACKEND_URL")           # Render environment variable
+TOKEN = os.getenv("DISCORD_TOKEN")
+BACKEND_URL = "https://roblox-key-system-3.onrender.com/genkey"
 
+app = Flask(__name__)
+
+# -------------------------
+# Flask server for Render
+# -------------------------
+@app.route("/")
+def home():
+    return "Bot Running!"
+
+# -------------------------
+# Discord Bot
+# -------------------------
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
-tree = discord.app_commands.CommandTree(client)
+bot = commands.Bot(command_prefix='/', intents=intents)
 
-@tree.command(name="genkey", description="Generate a Roblox key")
-async def genkey(interaction):
-    await interaction.response.defer(ephemeral=True)  # prevent "did not respond"
-
-    try:
-        r = requests.post(f"{API}/createkey")
-        key = r.json()["key"]
-    except:
-        await interaction.followup.send("Error connecting to backend!", ephemeral=True)
-        return
-
-    try:
-        await interaction.user.send(f"Your Key: `{key}`\nUse /lock <key> <hwid> to lock it!")
-        await interaction.followup.send("Key sent in DM!", ephemeral=True)
-    except:
-        # DM fail → ephemeral server message
-        await interaction.followup.send(f"Your Key: `{key}` (DM failed, see here)", ephemeral=True)
-
-@tree.command(name="lock", description="Lock your key with HWID")
-async def lock(interaction, key: str, hwid: str):
-    try:
-        r = requests.post(f"{API}/lockkey", json={"key": key, "hwid": hwid})
-        if r.status_code == 200:
-            await interaction.response.send_message("Key locked successfully!", ephemeral=True)
-        else:
-            await interaction.response.send_message("Failed to lock key!", ephemeral=True)
-    except:
-        await interaction.response.send_message("Error connecting to backend!", ephemeral=True)
-
-@client.event
+@bot.event
 async def on_ready():
-    await tree.sync()
-    print("Bot is ready!")
+    print(f"Logged in as {bot.user}")
 
-client.run(TOKEN)
+@bot.command()
+async def genkey(ctx):
+    try:
+        response = requests.get(BACKEND_URL)
+        if response.status_code == 200:
+            key = response.text
+            await ctx.send(f"Your Key: `{key}`")
+        else:
+            await ctx.send("⚠ Backend Error! Key generate nahi ho payi.")
+    except:
+        await ctx.send("⚠ Backend se connect nahi ho paaya!")
+        
+
+# -------------------------
+# Run both Bot + Flask
+# -------------------------
+if __name__ == "__main__":
+    from threading import Thread
+    port = int(os.getenv("PORT", 10000))
+
+    def run_flask():
+        app.run(host="0.0.0.0", port=port)
+
+    Thread(target=run_flask).start()
+    bot.run(TOKEN)
